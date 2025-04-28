@@ -1,2 +1,2 @@
 # SAMOS
-Surrogate Assisted Multi Objective Search
+This repository contains the implementation of the Surrogate Assisted Multi Objective Search
