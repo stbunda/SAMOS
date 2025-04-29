@@ -51,7 +51,7 @@ def main(args):
     #################################################
 
     # Build modelspace
-    from search_space.cgpnas.cgp import CGP
+    from search_space.cgpnasv2.cgp import CGP
     search_space = CGP(functions='CGPNASV2',
                        blocks=[{'rows': 10, 'cols': 4, 'channels': [32, 64]},
                                {'rows': 10, 'cols': 4, 'channels': [64, 128]},
@@ -82,38 +82,40 @@ def main(args):
 
     if args.random:
         surrogate_search = NAS_SAMOS(sample_space=search_space.sample_space,
-                                  n_doe=1000,
-                                  n_infill=1,
-                                  n_gen_candidates=1,
-                                  n_gen_surrogate=1,
-                                  n_var=search_space.get_problem_size(),
-                                  logger_params=logger,
-                                  sbatch=f'random_search_s{args.seed}_{args.sbatch}',
-                                  decoder_style=args.decoder,
-                                  nsga_params={'population_size': 40,
-                                               'mutation_prob': 0.3,
-                                               'crossover_prob': 0.9,
-                                               'dedup': False,
-                                               'seed': seed}
-                                  )
+                                     n_doe=1000,
+                                     n_infill=1,
+                                     n_gen_candidates=1,
+                                     n_gen_surrogate=1,
+                                     n_var=search_space.get_problem_size(),
+                                     logger_params=logger,
+                                     sbatch=f'random_search_s{args.seed}_{args.sbatch}',
+                                     decoder_style=args.decoder,
+                                     sa_algorithm={'name': 'NSGA2',
+                                                   'population_size': 40,
+                                                   'mutation_prob': 0.3,
+                                                   'crossover_prob': 0.9,
+                                                   'dedup': False,
+                                                   'seed': seed}
+                                     )
     else:
         surrogate_search = NAS_SAMOS(sample_space=search_space.sample_space,
-                                  n_doe=100,
-                                  n_infill=20,
-                                  n_gen_candidates=20,
-                                  n_gen_surrogate=30,
-                                  n_var=search_space.get_problem_size(),
-                                  logger_params=logger,
-                                  sbatch=args.sbatch,
-                                  decoder_style=args.decoder,
-                                  use_archive=args.archive,
-                                  continue_id=continue_id,
-                                  nsga_params={'population_size': 40,
-                                               'mutation_prob': 0.3,
-                                               'crossover_prob': 0.9,
-                                               'dedup': False,
-                                               'seed': seed}
-                                  )
+                                     n_doe=100,
+                                     n_infill=20,
+                                     n_gen_candidates=20,
+                                     n_gen_surrogate=30,
+                                     n_var=search_space.get_problem_size(),
+                                     logger_params=logger,
+                                     sbatch=args.sbatch,
+                                     decoder_style=args.decoder,
+                                     use_archive=args.archive,
+                                     continue_id=continue_id,
+                                     sa_algorithm={'name': 'NSGA2',
+                                                   'population_size': 40,
+                                                   'mutation_prob': 0.3,
+                                                   'crossover_prob': 0.9,
+                                                   'dedup': False,
+                                                   'seed': seed}
+                                     )
 
     evaluator = MO_evaluation(max_epochs=10,
                               datamodule=dataset,

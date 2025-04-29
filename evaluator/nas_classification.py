@@ -21,8 +21,8 @@ from pymoo.util.nds.fast_non_dominated_sort import fast_non_dominated_sort
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.callbacks import EarlyStopping, BatchSizeFinder
 from pytorch_lightning.loggers import TensorBoardLogger
-from search_space.cgpnas.CGPDecoder_new import CGPDecoder
-from search_space.cgpnas.CGPDecoder import CGPDecoder as CGPDecoder_original
+from search_space.cgpnasv2.CGPDecoder_new import CGPDecoder
+from search_space.cgpnasv2.CGPDecoder import CGPDecoder as CGPDecoder_original
 from torch.nn import functional as F
 from torch.nn import init
 from torchmetrics import Accuracy

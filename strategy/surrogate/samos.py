@@ -5,6 +5,7 @@ from copy import deepcopy
 
 import matplotlib
 import numpy as np
+
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.algorithms.moo.nsga2 import RankAndCrowding
 from pymoo.core.algorithm import Algorithm
@@ -36,7 +37,7 @@ class SAMOS(Algorithm):
                  sbatch='',
                  use_archive=None,
                  continue_id=None,
-                 nsga_params=None,  # Genetic algorithm parameters
+                 sa_algorithm=None,  # Genetic algorithm parameters
                  verbose=1, # Verbose 0: silent, Verbose 1: Images, Verbose 2: Text only
                  **kwargs):
 
@@ -44,7 +45,7 @@ class SAMOS(Algorithm):
         self.sample_space = sample_space
         self.problem = problem
         self.logger_params = logger_params
-        self.nsga_params = nsga_params
+        self.sa_algorithm = sa_algorithm
         self.sbatch = sbatch
         self.use_archive = use_archive
         self.continue_id = continue_id
@@ -99,7 +100,7 @@ class SAMOS(Algorithm):
             pickle.dump(self._archive, f)
 
     def _advance(self, infills=None, **kwargs):
-        print(f'################### ADVANCING GENERATION {self.it} #########################')
+        if self.verbose: print(f'################### ADVANCING GENERATION {self.it} #########################')
         # Merge the current infills with the previously evaluated population
         self.infills = infills
 
@@ -156,11 +157,17 @@ class SAMOS(Algorithm):
 
         return F_norm
 
-    def define_surrogate_algorithm(self, nsga_pop_size, infill_sample_space, crossover, crossover_eta, mutation,
-                                   mutation_eta):
+    def define_surrogate_algorithm(self):
+        nsga_pop_size = self.sa_algorithm.get('population_size', 40)
+        topx = int(nsga_pop_size * 0.75)
+
+        topx_pop = RankAndCrowding().do(problem=self.problem, pop=self._archive, n_survive=topx)
+        random_pop = self.sample_space(self.problem, nsga_pop_size - topx)
+        infill_sample_space = Population.merge(topx_pop, random_pop)
+
         return NSGA2(pop_size=nsga_pop_size,
                      sampling=infill_sample_space,
-                     eliminate_duplicates=self.nsga_params.get('dedup', False),
+                     eliminate_duplicates=self.sa_algorithm.get('dedup', False),
                      )
 
     def define_other_objectives(self):
@@ -173,11 +180,11 @@ class SAMOS(Algorithm):
         if self.continue_id is not None:
             if self.continue_id[0] is not None:
                 self.it = self.continue_id[1] + 1
-                print(
+                if self.verbose: print(
                     f'################### CONTINUE {self.continue_id[0]} - {self.continue_id[1]} #########################')
             self.continue_id = None
 
-        print('################### NEW INFILLS #########################')
+        if self.verbose: print('################### NEW INFILLS #########################')
         # Look for the next K number of candidates for low level evaluation
         # Get non-dominated architectures from archive:
         X = self._archive.get('X')
@@ -187,26 +194,8 @@ class SAMOS(Algorithm):
         self._fit_surrogate(self._archive)
 
         front = NonDominatedSorting().do(F, only_non_dominated_front=True)
-        # front_X = X[front]
 
-        nsga_pop_size = self.nsga_params.get('population_size', 40)
-        topx = int(nsga_pop_size * 0.75)
-
-        topx_pop = RankAndCrowding().do(problem=self.problem, pop=self._archive, n_survive=topx)
-        random_pop = self.sample_space(self.problem, nsga_pop_size - topx)
-        infill_sample_space = Population.merge(topx_pop, random_pop)
-
-        crossover = self.nsga_params.get('crossover_prob', 0.9)
-        mutation = self.nsga_params.get('mutation', 0.3)
-        crossover_eta = self.nsga_params.get('crossover_eta', 20)
-        mutation_eta = self.nsga_params.get('mutation_eta', 15)
-
-        algorithm = self.define_surrogate_algorithm(nsga_pop_size,
-                                                    infill_sample_space,
-                                                    crossover,
-                                                    crossover_eta,
-                                                    mutation,
-                                                    mutation_eta)
+        algorithm = self.define_surrogate_algorithm()
 
         other_objective_functions = self.define_other_objectives()
 
@@ -223,9 +212,6 @@ class SAMOS(Algorithm):
             pickle.dump(res, f)
 
         # check for duplicates
-        # not_duplicates = np.logical_not(x_new in X for x_new in res.pop.get("X"))
-        # todo: remove duplicates
-
         norm_cand = self.normalize(res.pop.get("F"), self.problem.objectives.keys())
         norm_F = self.normalize(self._archive.get("F"), self.problem.objectives.keys())
 
@@ -234,8 +220,7 @@ class SAMOS(Algorithm):
         combined = np.vstack((res_genes, archive_genes))
         unique_rows, idx = np.unique(combined, axis=0, return_index=True)
         not_duplicate = idx[idx < len(res_genes)]
-        print(f'Nr of non duplicates: {len(not_duplicate)}')
-        # print('Not removing them')
+        if self.verbose: print(f'Nr of non duplicates: {len(not_duplicate)}')
 
         # form a subset selection problem to short list K from pop_size
         indices = subset_selection(norm_cand[not_duplicate, 0], norm_F[front, 0], self.n_infill)
@@ -270,7 +255,6 @@ class SAMOS(Algorithm):
 
     @staticmethod
     def decode(X, method='shifted', real=True):
-        # todo: Set non-active path to NaN
         X = deepcopy(X)
         X_t = np.zeros(shape=(len(X), X[0, 0].normal, X[0, 0].n_var_size), dtype=float)
         X_tt = np.zeros(shape=(len(X), X[0, 0].normal * X[0, 0].n_var_size), dtype=float)

@@ -1,8 +1,8 @@
 ### Based on: https://github.com/Cosijopiii/CGPNAS
 from typing import List, Union
 
-from search_space.cgpnas.CartesianDefinitionW import CartesianGPConfigurationW
-from search_space.cgpnas.CartesianCellSamplingW import CartesianCellGeneticProgrammingW
+from search_space.cgpnasv2.CartesianDefinitionW import CartesianGPConfigurationW
+from search_space.cgpnasv2.CartesianCellSamplingW import CartesianCellGeneticProgrammingW
 
 from search_space.symbolic.CGPConfiguration import CartesianGPConfigurationB
 from search_space.symbolic.CGPSample import CartesianCellGeneticProgrammingB

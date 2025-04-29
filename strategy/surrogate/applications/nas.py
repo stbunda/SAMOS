@@ -4,14 +4,15 @@ import pickle
 import numpy as np
 from matplotlib import pyplot as plt
 from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.core.population import Population
+from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
 from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
 
-from search_space.cgpnas.CGPDecoder import CGPDecoder as CGPDecoder_original
-from search_space.cgpnas.CGPDecoder_new import CGPDecoder
-
-from strategy.surrogate.samos import SAMOS, get_correlation, SurrogateProblem
+from search_space.cgpnasv2.CGPDecoder import CGPDecoder as CGPDecoder_original
+from search_space.cgpnasv2.CGPDecoder_new import CGPDecoder
 from strategy.cgpnas.CrossoverCellCgpW import CrossoverCellCgpW
 from strategy.cgpnas.MutationCellCgpW import MutationCellCgpW
+from strategy.surrogate.samos import SAMOS, get_correlation, SurrogateProblem
 
 
 class NAS_SAMOS(SAMOS):
@@ -109,20 +110,26 @@ class NAS_SAMOS(SAMOS):
         plt.savefig(os.path.join(self.logger_params['plot_path'], f"error_prediction_s{self.it}.png"))
         plt.close()
 
-    def define_surrogate_algorithm(self,
-                                   nsga_pop_size,
-                                   infill_sample_space,
-                                   crossover,
-                                   crossover_eta,
-                                   mutation,
-                                   mutation_eta):
+    def define_surrogate_algorithm(self):
+        nsga_pop_size = self.sa_algorithm.get('population_size', 40)
+        topx = int(nsga_pop_size * 0.75)
+
+        topx_pop = RankAndCrowding().do(problem=self.problem, pop=self._archive, n_survive=topx)
+        random_pop = self.sample_space(self.problem, nsga_pop_size - topx)
+        infill_sample_space = Population.merge(topx_pop, random_pop)
+
+        crossover = self.sa_algorithm.get('crossover_prob', 0.9)
+        mutation = self.sa_algorithm.get('mutation', 0.3)
+        crossover_eta = self.sa_algorithm.get('crossover_eta', 20)
+        mutation_eta = self.sa_algorithm.get('mutation_eta', 15)
+
         return NSGA2(
-                pop_size=nsga_pop_size,
-                sampling=infill_sample_space,
-                crossover=CrossoverCellCgpW(prob=crossover, eta=crossover_eta),
-                mutation=MutationCellCgpW(prob=mutation, eta=mutation_eta),
-                eliminate_duplicates=self.nsga_params.get('dedup', False),
-            )
+            pop_size=nsga_pop_size,
+            sampling=infill_sample_space,
+            crossover=CrossoverCellCgpW(prob=crossover, eta=crossover_eta),
+            mutation=MutationCellCgpW(prob=mutation, eta=mutation_eta),
+            eliminate_duplicates=self.sa_algorithm.get('dedup', False),
+        )
 
     def define_other_objectives(self):
         return {

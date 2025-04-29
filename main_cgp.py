@@ -49,7 +49,7 @@ def main(args):
     #################################################
 
     # Build modelspace
-    from search_space.cgpnas.cgp import CGP
+    from search_space.cgpnasv2.cgp import CGP
     search_space = CGP(functions='CGPNASV2',
                        blocks=[{'rows': 10, 'cols': 4, 'channels': [32, 64]},
                                {'rows': 10, 'cols': 4, 'channels': [64, 128]},

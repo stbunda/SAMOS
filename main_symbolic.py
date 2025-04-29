@@ -52,7 +52,7 @@ def main(args):
     #################################################
 
     # Build modelspace
-    from search_space.cgpnas.cgp import CGP
+    from search_space.cgpnasv2.cgp import CGP
     search_space = CGP(functions='SYMBOLIC',
                        blocks=[{'rows': 10, 'cols': 4, 'range': [-10, 10]}])
 
@@ -68,39 +68,41 @@ def main(args):
 
     if args.random:
         surrogate_search = Symbolic_SAMOS(sample_space=search_space.sample_space,
-                                  problem_type='symbolic',
-                                  n_doe=1000,
-                                  n_infill=5,
-                                  n_gen_candidates=1,
-                                  n_gen_surrogate=2,
-                                  n_var=search_space.get_problem_size(),
-                                  logger_params=logger,
-                                  sbatch=f'random_search_s{seed}_{args.sbatch if args.sbatch is not None else logger["version"]}',
-                                  nsga_params={'population_size': 40,
-                                               'mutation_prob': 0.3,
-                                               'crossover_prob': 0.9,
-                                               'dedup': False,
-                                               'seed': seed}
-                                  )
+                                          problem_type='symbolic',
+                                          n_doe=1000,
+                                          n_infill=5,
+                                          n_gen_candidates=1,
+                                          n_gen_surrogate=2,
+                                          n_var=search_space.get_problem_size(),
+                                          logger_params=logger,
+                                          sbatch=f'random_search_s{seed}_{args.sbatch if args.sbatch is not None else logger["version"]}',
+                                          sa_algorithm={'name': 'NSGA2',
+                                                        'population_size': 40,
+                                                        'mutation_prob': 0.3,
+                                                        'crossover_prob': 0.9,
+                                                        'dedup': False,
+                                                        'seed': seed}
+                                          )
     else:
 
         surrogate_search = Symbolic_SAMOS(sample_space=search_space.sample_space,
-                                  problem_type='symbolic',
-                                  n_doe=100,
-                                  n_infill=20,
-                                  n_gen_candidates=20,
-                                  n_gen_surrogate=25,
-                                  n_var=search_space.get_problem_size(),
-                                  logger_params=logger,
-                                  sbatch=args.sbatch,
-                                  # use_archive='start_archive_347715.pkl',
-                                  continue_id=continue_id,
-                                  nsga_params={'population_size': 100,
-                                               'mutation_prob': 0.3,
-                                               'crossover_prob': 0.9,
-                                               'dedup': False,
-                                               'seed': seed}
-                                  )
+                                          problem_type='symbolic',
+                                          n_doe=100,
+                                          n_infill=20,
+                                          n_gen_candidates=20,
+                                          n_gen_surrogate=25,
+                                          n_var=search_space.get_problem_size(),
+                                          logger_params=logger,
+                                          sbatch=args.sbatch,
+                                          # use_archive='start_archive_347715.pkl',
+                                          continue_id=continue_id,
+                                          sa_algorithm={'name': 'NSGA2',
+                                                        'population_size': 100,
+                                                        'mutation_prob': 0.3,
+                                                        'crossover_prob': 0.9,
+                                                        'dedup': False,
+                                                        'seed': seed}
+                                          )
 
     evaluator = MO_evaluation(objectives={'mse': '', 'complexity': ''},
                               nvar_real=search_space.get_problem_size(),

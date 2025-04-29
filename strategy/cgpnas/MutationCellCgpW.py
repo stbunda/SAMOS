@@ -2,7 +2,7 @@ import copy
 import numpy as np
 from pymoo.core.mutation import Mutation
 from pymoo.operators.repair.to_bound import set_to_bounds_if_outside_by_problem
-from search_space.cgpnas.GenCGPW import GenCgpW
+from search_space.cgpnasv2.GenCGPW import GenCgpW
 
 class MutationCellCgpW(Mutation):
     """
