@@ -9,7 +9,7 @@ import torch
 from pymoo.optimize import minimize
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from strategy.surrogate.samos import SAMOS
+from strategy.surrogate.applications.symbolic import Symbolic_SAMOS
 
 
 def main(args):
@@ -67,7 +67,7 @@ def main(args):
     y_data = np.array([reference_function.subs(x, val) for val in x_data], dtype=np.float64)
 
     if args.random:
-        surrogate_search = SAMOS(sample_space=search_space.sample_space,
+        surrogate_search = Symbolic_SAMOS(sample_space=search_space.sample_space,
                                   problem_type='symbolic',
                                   n_doe=1000,
                                   n_infill=5,
@@ -84,7 +84,7 @@ def main(args):
                                   )
     else:
 
-        surrogate_search = SAMOS(sample_space=search_space.sample_space,
+        surrogate_search = Symbolic_SAMOS(sample_space=search_space.sample_space,
                                   problem_type='symbolic',
                                   n_doe=100,
                                   n_infill=20,

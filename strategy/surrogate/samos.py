@@ -5,7 +5,6 @@ from copy import deepcopy
 
 import matplotlib
 import numpy as np
-from matplotlib import pyplot as plt
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.algorithms.moo.nsga2 import RankAndCrowding
 from pymoo.core.algorithm import Algorithm
@@ -18,15 +17,8 @@ from pymoo.optimize import minimize
 from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
 from pymoo.util.normalization import ZeroToOneNormalization
 
-from search_space.cgpnas.CGPDecoder import CGPDecoder as CGPDecoder_original
-from search_space.cgpnas.CGPDecoder_new import CGPDecoder
-from search_space.symbolic.symbolic_regression import CGPDecoder as CGPDecoder_SR
-from models.carts import CART
-from subset_selection import subset_selection
-from ..cgpnas.CrossoverCellCgpW import CrossoverCellCgpW
-from ..cgpnas.MutationCellCgpW import MutationCellCgpW
-from ..symbolic.CrossoverCellCgpB import CrossoverCellCgpB
-from ..symbolic.MutationCellCgpB import MutationCellCgpB
+from strategy.surrogate.models.carts import CART
+from strategy.surrogate.subset_selection import subset_selection
 
 matplotlib.use('Agg')
 
@@ -35,7 +27,6 @@ class SAMOS(Algorithm):
     def __init__(self,
                  sample_space: Sampling,  # Define search space
                  problem: Problem = None,  # Define search problem
-                 problem_type: str = 'NAS',
                  n_doe: int = 100,  # Nr of initial architectures to fit surrogate
                  n_infill: int = 8,  # Nr of architectures to train
                  n_gen_candidates: int = 20,  # Nr of generations of NSGA-II loop
@@ -43,22 +34,21 @@ class SAMOS(Algorithm):
                  n_var: int = None,  # Nr of variables
                  logger_params=None,
                  sbatch='',
-                 decoder_style='old',
                  use_archive=None,
                  continue_id=None,
                  nsga_params=None,  # Genetic algorithm parameters
+                 verbose=1, # Verbose 0: silent, Verbose 1: Images, Verbose 2: Text only
                  **kwargs):
 
         super().__init__(eliminate_duplicates=False, **kwargs)
         self.sample_space = sample_space
         self.problem = problem
-        self.problem_type = problem_type
         self.logger_params = logger_params
         self.nsga_params = nsga_params
         self.sbatch = sbatch
-        self.decoder_style = decoder_style
         self.use_archive = use_archive
         self.continue_id = continue_id
+        self.verbose = verbose
 
         self.save_dir = os.path.join(self.logger_params['save_dir'],
                                      self.logger_params['name'],
@@ -111,18 +101,16 @@ class SAMOS(Algorithm):
     def _advance(self, infills=None, **kwargs):
         print(f'################### ADVANCING GENERATION {self.it} #########################')
         # Merge the current infills with the previously evaluated population
-        # Fc = self.problem.evaluate(infills.get('X'))
         self.infills = infills
 
         archive = copy.deepcopy(self._archive)
         self._archive = Population.merge(self._archive, infills)
-
-        if self.problem.problem_type == 'nas':
-            self.plot_progress_nas(infills, archive)
-        else:
-            self.plot_progess_symbol(infills, archive)
-
+        if self.verbose:
+            self.plot_progress(infills, archive)
         self.it += 1
+
+    def plot_progress(self, infills, archive):
+        pass
 
     @staticmethod
     def pareto_line(front):
@@ -140,202 +128,12 @@ class SAMOS(Algorithm):
         y_step.append(pareto_sorted[-1, 1])
         return np.array([x_step, y_step])
 
-    def plot_progress_nas(self, infills, archive):
-        F = self._archive.get('F')
-        Fa = archive.get('F')
-        Fc = infills.get('F')
-
-        # Error predictions:
-        a_error_pred = self.surrogate.predict(self.decode(archive.get('X')))
-        c_error_pred = self.surrogate.predict(self.decode(infills.get('X')))
-
-        # Actual error
-        a_error = Fa[:, 0]
-        c_error = Fc[:, 0]
-
-        # check for accuracy predictor's performance
-        rmse, rho, tau = get_correlation(
-            np.vstack((a_error_pred, c_error_pred)),
-            np.vstack((a_error.reshape(-1, 1), c_error.reshape(-1, 1)))
-        )
-        print(f"fitting {self.surrogate}: RMSE = {rmse:.4f}, Spearmans Rho = {rho:.4f}, Kendalls Tau = {tau:.4f}")
-
-        path = os.path.join(self.save_dir, str(self.it))
-
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        with open(f"{path}/archive_{self.sbatch}_{self.it}.pkl", "wb") as f:
-            pickle.dump(self._archive, f)
-        with open(f"{path}/surrogate_{self.sbatch}_{self.it}.pkl", "wb") as f:
-            pickle.dump(self.surrogate, f)
-        with open(f"{path}/infills_{self.sbatch}_{self.it}.pkl", "wb") as f:
-            pickle.dump(infills, f)
-
-        # calculate hypervolume
-        hv = self._calc_hv(F)
-        pF = F[NonDominatedSorting().do(F, only_non_dominated_front=True)]
-        pFc = Fc[NonDominatedSorting().do(Fc, only_non_dominated_front=True)]
-        pFa = Fa[NonDominatedSorting().do(Fa, only_non_dominated_front=True)]
-
-        # print iteration-wise statistics
-        print("Iter {}: hv = {:.2f}".format(self.it, hv))
-        F_line = self.pareto_line(pF)
-        Fa_line = self.pareto_line(pFa)
-
-        for i in range(2):
-            plt.figure(figsize=(18, 10))
-            plt.scatter(Fa[:, 0], Fa[:, 1] * 1e6, alpha=0.3, label='Archive', color='green')
-            plt.plot(Fa_line[0, :], Fa_line[1, :] * 1e6, label='NDS Archive', marker='*', color='green')
-            plt.scatter(pFa[:, 0], pFa[:, 1] * 1e6, label='NDS Archive', marker='*', color='green')
-
-            plt.scatter(self.predictions[self.it], Fc[:, 1] * 1e6, label=f'Predictions Gen {self.it}', marker='v',
-                        color='orange')
-
-            plt.scatter(Fc[:, 0], Fc[:, 1] * 1e6, alpha=0.7, label=f'Evaluated Gen {self.it}', color='blue')
-            plt.plot(F_line[0, :], F_line[1, :] * 1e6, label=f'NDS Evaluated Gen {self.it}', marker='*', color='blue')
-            plt.scatter(pFc[:, 0], pFc[:, 1] * 1e6, label=f'NDS Evaluated Gen {self.it}', marker='*', color='blue')
-
-            plt.scatter(pF[:, 0], pF[:, 1] * 1e6, label=f'NDS total population', marker='*')
-
-            plt.legend(loc='upper right')
-            plt.xlabel('% Classification Error')
-
-            if i == 0:
-                plt.yscale('log')
-                plt.ylabel('MAdds')
-                plt.title("Objective Space")
-                plt.savefig(os.path.join(self.logger_params['plot_path'], f"log_objective_space_s{self.it}.png"))
-                plt.close()
-            else:
-                plt.ylabel('MAdds')
-                plt.title("Objective Space")
-                plt.savefig(os.path.join(self.logger_params['plot_path'], f"objective_space_s{self.it}.png"))
-                plt.close()
-
-        plt.figure(figsize=(18, 10))
-        plt.scatter(a_error, a_error_pred, label='Archive')
-        plt.scatter(c_error, c_error_pred, label=f'Gen {self.it}')
-        min_val = np.min([np.min(a_error), np.min(a_error_pred)])
-        max_val = np.max([np.max(a_error), np.max(a_error_pred)])
-
-        plt.plot([min_val, max_val], [min_val, max_val], 'r--', label="y = x (Ideal)")
-        plt.xlabel('Classification Error')
-        plt.ylabel('Predicted Error')
-        plt.legend()
-        plt.title("Surrogate Error Prediction")
-        plt.savefig(os.path.join(self.logger_params['plot_path'], f"error_prediction_s{self.it}.png"))
-        plt.close()
-
-    def plot_progess_symbol(self, infills, archive):
-        F = self._archive.get('F')
-        F = F[F[:, 0] > 0]
-
-        Fa = archive.get('F')
-        Fa_error_idx = Fa[:, 0] > 0
-        Fa = Fa[Fa_error_idx]
-
-        Fc = infills.get('F')
-        Fc_error_idx = Fc[:, 0] > 0
-        Fc = Fc[Fc_error_idx]
-
-        # Error predictions:
-        a_error_pred = self.surrogate.predict(self.decode(archive.get('X')))
-        a_error_pred = a_error_pred[Fa_error_idx]
-
-        c_error_pred = self.surrogate.predict(self.decode(infills.get('X')))
-        c_error_pred = c_error_pred[Fc_error_idx]
-
-        # Actual error
-        a_error = Fa[:, 0]
-        c_error = Fc[:, 0]
-
-        # check for accuracy predictor's performance
-        rmse, rho, tau = get_correlation(
-            np.vstack((a_error_pred, c_error_pred)),
-            np.vstack((a_error.reshape(-1, 1), c_error.reshape(-1, 1)))
-        )
-        print(f"fitting {self.surrogate}: RMSE = {rmse:.4f}, Spearmans Rho = {rho:.4f}, Kendalls Tau = {tau:.4f}")
-
-        path = os.path.join(self.save_dir, str(self.it))
-
-        if not os.path.exists(path):
-            os.makedirs(path)
-
-        with open(f"{path}/archive_{self.sbatch}_{self.it}.pkl", "wb") as f:
-            pickle.dump(self._archive, f)
-        with open(f"{path}/surrogate_{self.sbatch}_{self.it}.pkl", "wb") as f:
-            pickle.dump(self.surrogate, f)
-        with open(f"{path}/infills_{self.sbatch}_{self.it}.pkl", "wb") as f:
-            pickle.dump(infills, f)
-
-        # calculate hypervolume
-        hv = self._calc_hv(F)
-        pF = F[NonDominatedSorting().do(F, only_non_dominated_front=True)]
-        pFc = Fc[NonDominatedSorting().do(Fc, only_non_dominated_front=True)]
-        pFa = Fa[NonDominatedSorting().do(Fa, only_non_dominated_front=True)]
-
-        # print iteration-wise statistics
-        print("Iter {}: hv = {:.2f}".format(self.it, hv))
-        F_line = self.pareto_line(pF)
-        Fa_line = self.pareto_line(pFa)
-
-        for i in range(2):
-            plt.figure(figsize=(18, 10))
-            plt.scatter(Fa[:, 0], Fa[:, 1], alpha=0.3, label='Archive', color='green')
-            plt.plot(Fa_line[0, :], Fa_line[1, :], label='NDS Archive', marker='*', color='green')
-            plt.scatter(pFa[:, 0], pFa[:, 1], label='NDS Archive', marker='*', color='green')
-
-            plt.scatter(self.predictions[self.it][Fc_error_idx], Fc[:, 1], label=f'Predictions Gen {self.it}',
-                        marker='v',
-                        color='orange')
-
-            plt.scatter(Fc[:, 0], Fc[:, 1], alpha=0.7, label=f'Evaluated Gen {self.it}', color='blue')
-            plt.plot(F_line[0, :], F_line[1, :], label=f'NDS Evaluated Gen {self.it}', marker='*', color='blue')
-            plt.scatter(pFc[:, 0], pFc[:, 1], label=f'NDS Evaluated Gen {self.it}', marker='*', color='blue')
-
-            plt.scatter(pF[:, 0], pF[:, 1], label=f'NDS total population', marker='*')
-
-            plt.legend(loc='upper right')
-            plt.xlabel('MSE')
-            # plt.xlim([0, 10000])
-            if i == 0:
-                plt.xscale('log')
-
-                plt.ylabel('Complexity')
-                plt.title("Objective Space")
-                plt.savefig(os.path.join(self.logger_params['plot_path'], f"log_objective_space_s{self.it}.png"))
-                plt.close()
-            else:
-                plt.ylabel('Complexity')
-                plt.title("Objective Space")
-                plt.savefig(os.path.join(self.logger_params['plot_path'], f"objective_space_s{self.it}.png"))
-                plt.close()
-
-        plt.figure(figsize=(18, 10))
-        plt.scatter(a_error, a_error_pred, label='Archive')
-        plt.scatter(c_error, c_error_pred, label=f'Gen {self.it}')
-        min_val = np.min([np.min(a_error), np.min(a_error_pred)])
-        max_val = np.max([np.max(a_error), np.max(a_error_pred)])
-
-        plt.plot([min_val, max_val], [min_val, max_val], 'r--', label="y = x (Ideal)")
-        plt.xlabel('Classification Error')
-        plt.xscale('log')
-        plt.ylabel('Predicted Error')
-        plt.yscale('log')
-        plt.legend()
-        plt.title("Surrogate Error Prediction")
-        plt.savefig(os.path.join(self.logger_params['plot_path'], f"error_prediction_s{self.it}.png"))
-        plt.close()
-
     def _calc_hv(self, F):
         # calculate hypervolume on the non-dominated set of F
         norm_F = self.normalize(F, objectives=self.problem.objectives.keys())
 
         front = NonDominatedSorting().do(norm_F, only_non_dominated_front=True)
         nd_F = norm_F[front, :]
-        # ref_point = 1.01 * np.max(norm_F, axis=0)
-
         hv_metric = Hypervolume(ref_point=np.array([1.01, 1.01]),
                                 norm_ref_point=False,
                                 zero_to_one=True,
@@ -357,6 +155,19 @@ class SAMOS(Algorithm):
                 F_norm[:, o] = (F[:, o] - np.min(F[:, o])) / (np.max(F[:, o]) - np.min(F[:, o]))
 
         return F_norm
+
+    def define_surrogate_algorithm(self, nsga_pop_size, infill_sample_space, crossover, crossover_eta, mutation,
+                                   mutation_eta):
+        return NSGA2(pop_size=nsga_pop_size,
+                     sampling=infill_sample_space,
+                     eliminate_duplicates=self.nsga_params.get('dedup', False),
+                     )
+
+    def define_other_objectives(self):
+        return {}
+
+    def define_surrogate_problem(self, other_objective_functions):
+        pass
 
     def _infill(self):
         if self.continue_id is not None:
@@ -390,66 +201,24 @@ class SAMOS(Algorithm):
         crossover_eta = self.nsga_params.get('crossover_eta', 20)
         mutation_eta = self.nsga_params.get('mutation_eta', 15)
 
-        if self.problem.problem_type == 'nas':
-            algorithm = NSGA2(
-                pop_size=nsga_pop_size,
-                sampling=infill_sample_space,
-                crossover=CrossoverCellCgpW(prob=crossover, eta=crossover_eta),
-                mutation=MutationCellCgpW(prob=mutation, eta=mutation_eta),
-                eliminate_duplicates=self.nsga_params.get('dedup', False),
-            )
-        else:
-            algorithm = NSGA2(
-                pop_size=nsga_pop_size,
-                sampling=infill_sample_space,
-                crossover=CrossoverCellCgpB(prob=crossover, eta=crossover_eta),
-                mutation=MutationCellCgpB(prob=mutation, eta=mutation_eta),
-                eliminate_duplicates=self.nsga_params.get('dedup', False),
-            )
+        algorithm = self.define_surrogate_algorithm(nsga_pop_size,
+                                                    infill_sample_space,
+                                                    crossover,
+                                                    crossover_eta,
+                                                    mutation,
+                                                    mutation_eta)
 
-        other_objective_functions = {
-            'MAC': self.problem.count_macs if hasattr(self.problem, 'count_macs') else None,
-            'Parameters': self.problem.count_parameters if hasattr(self.problem, 'count_parameters') else None,
-            'complexity': self.problem.calc_complexity if hasattr(self.problem, 'calc_complexity') else None,
+        other_objective_functions = self.define_other_objectives()
 
-        }
-        if self.problem.problem_type == 'nas':
-            problem = SurrogateProblem(search_space=self.sample_space,
-                                       predictor=self.surrogate,
-                                       objectives={key: other_objective_functions.get(key, "") for key in
-                                                   self.problem.objectives.keys() & other_objective_functions},
-                                       input_tensor=self.problem.datamodule.input_tensor,
-                                       n_classes=len(self.problem.datamodule.classes),
-                                       decoder=self.decode,
-                                       decoder_style=self.decoder_style,
-                                       nvar_real=self.n_var,
-                                       )
-        else:
-            problem = SurrogateProblem2(search_space=self.sample_space,
-                                        predictor=self.surrogate,
-                                        objectives={key: other_objective_functions.get(key, "") for key in
-                                                    self.problem.objectives.keys() & other_objective_functions},
-                                        x_data=self.problem.x_data,
-                                        y_data=self.problem.y_data,
-                                        decoder=self.decode,
-                                        nvar_real=self.n_var,
-                                        )
+        surrogate_problem = self.define_surrogate_problem(other_objective_functions)
 
-        res = minimize(problem,
+        res = minimize(surrogate_problem,
                        algorithm,
                        ('n_gen', self.n_gen_candidates),
                        seed=self.seed,
                        save_history=True,
                        verbose=True)
 
-        # path = os.path.join(self.logger_params['save_dir'],
-        #                     self.logger_params['name'],
-        #                     f"version_{self.logger_params['version']}",
-        #                     'archive')
-
-        # if not os.path.exists(path):
-        #     os.makedirs(path)
-        #
         with open(f"{self.save_dir}/surrogate_result_{self.sbatch}.pkl", "wb") as f:
             pickle.dump(res, f)
 
@@ -536,25 +305,15 @@ class SAMOS(Algorithm):
 
 
 class SurrogateProblem(Problem):
-    """ The optimization problem for finding the next N candidate architectures """
-
     def __init__(self,
                  search_space,
                  predictor,
                  objectives,
-                 input_tensor,
-                 n_classes,
-                 nvar_real,
-                 decoder,
-                 decoder_style):
+                 nvar_real):
         super().__init__(n_var=1, n_obj=len(objectives) + 1, n_constr=0, requires_kwargs=True)
 
         self.ss = search_space
         self.predictor = predictor
-        self.input_tensor = input_tensor
-        self.n_classes = n_classes
-        self.decoder = decoder
-        self.decoder_style = decoder_style
         self.objectives = objectives
 
         # Bounds for real-valued variables
@@ -562,53 +321,7 @@ class SurrogateProblem(Problem):
         self.xu = 0.999999 * np.ones(nvar_real)
 
     def _evaluate(self, x, out, *args, **kwargs):
-        metrics = np.zeros((len(x), self.n_obj))
-        metrics[:, 0] = self.predictor.predict(self.decoder(x)).squeeze()
-
-        for m, model_instance in enumerate(x):
-            if self.decoder_style == 'old':
-                model = CGPDecoder_original(model_instance[0].active_net_list(), self.input_tensor, self.n_classes)
-            else:
-                model = CGPDecoder(model_instance[0].active_net_list(), self.input_tensor, self.n_classes)
-            for o, objective in enumerate(list(self.objectives.keys())):
-                metrics[m, o + 1] = self.objectives[objective](model)
-        out['F'] = metrics
-
-
-class SurrogateProblem2(Problem):
-    """ The optimization problem for finding the next N candidate architectures """
-
-    def __init__(self,
-                 search_space,
-                 predictor,
-                 objectives,
-                 x_data,
-                 y_data,
-                 nvar_real,
-                 decoder):
-        super().__init__(n_var=1, n_obj=len(objectives) + 1, n_constr=0, requires_kwargs=True)
-
-        self.ss = search_space
-        self.predictor = predictor
-        self.x_data = x_data
-        self.y_data = y_data
-        self.decoder = decoder
-        self.objectives = objectives
-
-        # Bounds for real-valued variables
-        self.xl = np.zeros(nvar_real)
-        self.xu = 0.999999 * np.ones(nvar_real)
-
-    def _evaluate(self, x, out, *args, **kwargs):
-        metrics = np.zeros((len(x), self.n_obj))
-        metrics[:, 0] = self.predictor.predict(self.decoder(x)).squeeze()
-
-        for m, model_instance in enumerate(x):
-            model = CGPDecoder_SR(model_instance[0].active_net_list())
-            for o, objective in enumerate(list(self.objectives.keys())):
-                metrics[m, o + 1] = self.objectives[objective](model)
-        out['F'] = np.array(metrics)
-
+        pass
 
 def get_correlation(prediction, target):
     import scipy.stats as stats

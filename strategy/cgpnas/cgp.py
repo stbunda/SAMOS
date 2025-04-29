@@ -3,10 +3,8 @@ from __future__ import annotations
 from pymoo.algorithms.moo.nsga2 import NSGA2
 from typing import Dict
 
-# from nni.nas.strategy.base import Strategy
-
-from CrossoverCellCgpW import CrossoverCellCgpW
-from MutationCellCgpW import MutationCellCgpW
+from strategy.cgpnas.CrossoverCellCgpW import CrossoverCellCgpW
+from strategy.cgpnas.MutationCellCgpW import MutationCellCgpW
 
 
 class CGPNASV2():

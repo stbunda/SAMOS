@@ -8,7 +8,7 @@ import torch
 from pymoo.optimize import minimize
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from strategy.surrogate.samos import SAMOS
+from strategy.surrogate.applications.nas import NAS_SAMOS
 
 
 def main(args):
@@ -81,7 +81,7 @@ def main(args):
                             pin_memory=True)
 
     if args.random:
-        surrogate_search = SAMOS(sample_space=search_space.sample_space,
+        surrogate_search = NAS_SAMOS(sample_space=search_space.sample_space,
                                   n_doe=1000,
                                   n_infill=1,
                                   n_gen_candidates=1,
@@ -97,7 +97,7 @@ def main(args):
                                                'seed': seed}
                                   )
     else:
-        surrogate_search = SAMOS(sample_space=search_space.sample_space,
+        surrogate_search = NAS_SAMOS(sample_space=search_space.sample_space,
                                   n_doe=100,
                                   n_infill=20,
                                   n_gen_candidates=20,
@@ -172,7 +172,7 @@ if __name__ == "__main__":
                         "--decoder",
                         dest="decoder",
                         help="decoder",
-                        default='old')
+                        default='original')
     parser.add_argument("-r",
                         "--random",
                         dest="random",

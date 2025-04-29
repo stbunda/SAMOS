@@ -92,6 +92,7 @@ def main(args):
                               accelerator='gpu' if torch.cuda.is_available() else 'cpu',
                               logger_params=logger,
                               batch_nr=args.sbatch,
+                              decoder_style=args.decoder,
                               objectives={'Classification_Error': {'learning_rate': 0.025,
                                                                    'weight_decay': 3.0e-4},
                                           'MAC': {'scale': 1.0e+6}
@@ -137,7 +138,7 @@ if __name__ == "__main__":
                         "--decoder",
                         dest="decoder",
                         help="decoder",
-                        default='old')
+                        default='original')
     parser.add_argument("-r",
                         "--random",
                         dest="random",
