@@ -4,8 +4,7 @@ import copy
 from typing import Union
 import pytorch_lightning as L
 import torch
-from torch.utils.data import random_split, Subset
-from nni.nas.evaluator.pytorch.lightning import DataLoader
+from torch.utils.data import random_split, Subset, DataLoader
 import torchvision.transforms as transforms
 import torchvision.datasets as td
 import os

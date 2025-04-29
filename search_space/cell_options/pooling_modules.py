@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
-import lightning.pytorch as pl
+import pytorch_lightning as pl
 
 class MaxPool(pl.LightningModule):
     def __init__(self,
