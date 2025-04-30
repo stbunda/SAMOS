@@ -77,8 +77,11 @@ class CGPDecoder(LightningModule):
                 # Skip input nodes
                 continue
 
-            if name == 'full':
+            if name == 'output':
                 # Fully connected layer
+                self.channel_num[i] = self.channel_num[in1]
+                self.size[i] = 1
+                self.encode.append(nn.AdaptiveAvgPool2d(1))
                 self.encode.append(nn.Linear(self.channel_num[in1] * self.size[in1] ** 2, n_class))
                 continue
             if name == 'MaxPool' or name == 'AvgPool':
@@ -91,12 +94,12 @@ class CGPDecoder(LightningModule):
                 else:
                     self.encode.append(nn.AvgPool2d(2, stride=2))
                 continue
-
-            if name == 'GAvgPool':
-                self.channel_num[i] = self.channel_num[in1]
-                self.size[i] = 1
-                self.encode.append(nn.AdaptiveAvgPool2d(1))
-                continue
+            # Moved this to output node
+            # if name == 'GAvgPool':
+            #     self.channel_num[i] = self.channel_num[in1]
+            #     self.size[i] = 1
+            #     self.encode.append(nn.AdaptiveAvgPool2d(1))
+            #     continue
 
             if name == "Identity":
                 self.channel_num[i] = self.channel_num[in1]
